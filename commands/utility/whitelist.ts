@@ -36,11 +36,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   modal.addLabelComponents(labelBuilder);
   await interaction.showModal(modal);
 
-  const submittedData = await interaction.awaitModalSubmit({
-    time: 5 * 60 * 1000,
-    filter: (i) =>
-      i.customId === "whitelistModal" && i.user.id === interaction.user.id,
-  });
+  let submittedData;
+  try {
+    submittedData = await interaction.awaitModalSubmit({
+      time: 5 * 60 * 1000,
+      filter: (i) =>
+        i.customId === "whitelistModal" && i.user.id === interaction.user.id,
+    });
+  } catch (error) {
+    console.log(`Whitelist modal timed out for user ${interaction.user.tag}`);
+    return;
+  }
+
   const minecraftName = submittedData.fields.getTextInputValue("minecraftName");
   const minecraftUsernameRegex = /^[a-zA-Z0-9_]{3,16}$/;
   if (!minecraftUsernameRegex.test(minecraftName)) {
