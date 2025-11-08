@@ -106,20 +106,6 @@ class PterodactylClient {
   }
 
   /**
-   * Remove a player from the whitelist
-   */
-  async removeFromWhitelist(playerName: string): Promise<void> {
-    const whitelist = await this.getWhitelist();
-    const filteredWhitelist = whitelist.filter((p) => p.name !== playerName);
-
-    if (filteredWhitelist.length === whitelist.length) {
-      throw new Error(`Player ${playerName} not found in whitelist`);
-    }
-
-    await this.updateWhitelist(filteredWhitelist);
-  }
-
-  /**
    * Check if a player is whitelisted
    */
   async isWhitelisted(playerName: string): Promise<boolean> {

@@ -25,7 +25,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setCustomId("minecraftName")
     .setPlaceholder("e.g. CoolGuy")
     .setStyle(TextInputStyle.Short)
-    .setRequired(true);
+    .setRequired(true)
+    .setMinLength(3)
+    .setMaxLength(16); 
+
   const labelBuilder = new LabelBuilder()
     .setLabel("Enter your Minecraft username:")
     .setTextInputComponent(minecraftNameInput);
@@ -39,6 +42,14 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       i.customId === "whitelistModal" && i.user.id === interaction.user.id,
   });
   const minecraftName = submittedData.fields.getTextInputValue("minecraftName");
+  const minecraftUsernameRegex = /^[a-zA-Z0-9_]{3,16}$/;
+  if (!minecraftUsernameRegex.test(minecraftName)) {
+    await submittedData.reply({
+      content: `Invalid username format. Minecraft usernames must be 3-16 characters long and contain only letters, numbers, and underscores.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   // Check if minecraftName is a valid Minecraft username
   try {
