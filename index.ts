@@ -6,6 +6,7 @@ import {
   ApplicationCommand,
   Client,
   GatewayIntentBits,
+  MessageFlags, // added
 } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
@@ -69,7 +70,6 @@ async function registerCommands() {
 // Basic runtime
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user?.tag}`);
-  // Optional: move to Routes.applicationGuildCommands for instant updates during dev
   registerCommands();
 });
 
@@ -77,7 +77,8 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   const command = commandMap.get(interaction.commandName);
   if (!command) {
-    if (!interaction.replied) await interaction.reply({ content: 'Command not found.', ephemeral: true });
+    if (!interaction.replied)
+      await interaction.reply({ content: 'Command not found.', flags: MessageFlags.Ephemeral });
     return;
   }
   try {
@@ -85,9 +86,15 @@ client.on('interactionCreate', async (interaction) => {
   } catch (err) {
     console.error(`[command error] ${interaction.commandName}`, err);
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: 'There was an error while executing this command.', ephemeral: true });
+      await interaction.followUp({
+        content: 'There was an error while executing this command.',
+        flags: MessageFlags.Ephemeral,
+      });
     } else {
-      await interaction.reply({ content: 'There was an error while executing this command.', ephemeral: true });
+      await interaction.reply({
+        content: 'There was an error while executing this command.',
+        flags: MessageFlags.Ephemeral,
+      });
     }
   }
 });
