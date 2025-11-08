@@ -26,7 +26,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     .setPlaceholder("e.g. CoolGuy")
     .setStyle(TextInputStyle.Short)
     .setRequired(true);
-    const labelBuilder = new LabelBuilder().setLabel("Enter your Minecraft username:")
+  const labelBuilder = new LabelBuilder()
+    .setLabel("Enter your Minecraft username:")
     .setTextInputComponent(minecraftNameInput);
 
   modal.addLabelComponents(labelBuilder);
@@ -34,7 +35,8 @@ export async function execute(interaction: ChatInputCommandInteraction) {
 
   const submittedData = await interaction.awaitModalSubmit({
     time: 5 * 60 * 1000,
-    filter: (i) => i.customId === "whitelistModal" && i.user.id === interaction.user.id,
+    filter: (i) =>
+      i.customId === "whitelistModal" && i.user.id === interaction.user.id,
   });
   const minecraftName = submittedData.fields.getTextInputValue("minecraftName");
 
@@ -43,7 +45,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     const mojangResponse = await axios.get(
       `https://api.mojang.com/users/profiles/minecraft/${minecraftName}`
     );
-    
+
     if (!mojangResponse.data || !mojangResponse.data.id) {
       await submittedData.reply({
         content: `Sorry, "${minecraftName}" is not a valid Minecraft username.`,
@@ -53,7 +55,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     }
 
     const uuid = mojangResponse.data.id;
-    const formattedUuid = `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
+    const formattedUuid = `${uuid.slice(0, 8)}-${uuid.slice(
+      8,
+      12
+    )}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 
     // Use Pterodactyl api to add user to whitelist and run a whitelist reload command
     const pterodactyl = new PterodactylClient({
@@ -76,7 +81,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
     });
   } catch (error: any) {
     console.error("Whitelist error:", error);
-    
+
     let errorMessage = "An error occurred while processing your request.";
     if (error.response?.status === 404) {
       errorMessage = `Sorry, "${minecraftName}" is not a valid Minecraft username.`;
