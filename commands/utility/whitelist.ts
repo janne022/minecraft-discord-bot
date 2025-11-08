@@ -9,6 +9,8 @@ import {
   LabelBuilder,
   MessageFlags,
 } from "discord.js";
+import { PterodactylClient } from "../../utility/pterodactyl";
+import axios from "axios";
 
 export const data = new SlashCommandBuilder()
   .setName("whitelist")
@@ -36,11 +38,55 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   });
   const minecraftName = submittedData.fields.getTextInputValue("minecraftName");
 
-  // TODO: Check if minecraftName is a valid Minecraft username
+  // Check if minecraftName is a valid Minecraft username
+  try {
+    const mojangResponse = await axios.get(
+      `https://api.mojang.com/users/profiles/minecraft/${minecraftName}`
+    );
+    
+    if (!mojangResponse.data || !mojangResponse.data.id) {
+      await submittedData.reply({
+        content: `Sorry, "${minecraftName}" is not a valid Minecraft username.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
-  // TODO: Use Pterodactyl api to add user to whitelist and run a whitelist reload command
-  await submittedData.reply({
-    content: `Thank you, ${minecraftName}! You have been added to the whitelist.`,
-    flags: MessageFlags.Ephemeral,
-  });
+    const uuid = mojangResponse.data.id;
+    const formattedUuid = `${uuid.slice(0, 8)}-${uuid.slice(8, 12)}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
+
+    // Use Pterodactyl api to add user to whitelist and run a whitelist reload command
+    const pterodactyl = new PterodactylClient({
+      apiUrl: process.env.PTERODACTYL_URL || "",
+      apiKey: process.env.PTERODACTYL_API_KEY || "",
+      serverId: process.env.PTERODACTYL_SERVER_ID || "",
+    });
+
+    await pterodactyl.addToWhitelist({
+      uuid: formattedUuid,
+      name: mojangResponse.data.name,
+    });
+
+    // Send whitelist reload command to the server
+    await pterodactyl.sendCommand("whitelist reload");
+
+    await submittedData.reply({
+      content: `Thank you, ${mojangResponse.data.name}! You have been added to the whitelist.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error: any) {
+    console.error("Whitelist error:", error);
+    
+    let errorMessage = "An error occurred while processing your request.";
+    if (error.response?.status === 404) {
+      errorMessage = `Sorry, "${minecraftName}" is not a valid Minecraft username.`;
+    } else if (error.message?.includes("already whitelisted")) {
+      errorMessage = `${minecraftName} is already on the whitelist!`;
+    }
+
+    await submittedData.reply({
+      content: errorMessage,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 }
