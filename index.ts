@@ -6,7 +6,7 @@ import {
   ApplicationCommand,
   Client,
   GatewayIntentBits,
-  MessageFlags, // added
+  MessageFlags,
 } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
@@ -17,6 +17,7 @@ interface MinimalCommand {
     toJSON: () => RESTPostAPIChatInputApplicationCommandsJSONBody;
   };
   execute: (...args: any[]) => Promise<any>;
+  cooldown?: number;
 }
 
 const token = process.env.DISCORD_TOKEN;
@@ -29,6 +30,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const commandsJson: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [];
 const commandMap = new Map<string, MinimalCommand>();
+const cooldowns = new Map<string, Map<string, number>>();
 
 const foldersPath = path.join(__dirname, 'commands');
 const commandFolders = fs.existsSync(foldersPath) ? fs.readdirSync(foldersPath) : [];
@@ -81,6 +83,32 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: 'Command not found.', flags: MessageFlags.Ephemeral });
     return;
   }
+
+  // Rate limiting check
+  if (!cooldowns.has(interaction.commandName)) {
+    cooldowns.set(interaction.commandName, new Map());
+  }
+
+  const now = Date.now();
+  const timestamps = cooldowns.get(interaction.commandName)!;
+  const cooldownAmount = (command.cooldown ?? 3) * 1000;
+
+  if (timestamps.has(interaction.user.id)) {
+    const expirationTime = timestamps.get(interaction.user.id)! + cooldownAmount;
+
+    if (now < expirationTime) {
+      const timeLeft = (expirationTime - now) / 1000;
+      await interaction.reply({
+        content: `Please wait ${timeLeft.toFixed(1)} more second(s) before using \`${interaction.commandName}\` again.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+
+  timestamps.set(interaction.user.id, now);
+  setTimeout(() => timestamps.delete(interaction.user.id), cooldownAmount);
+
   try {
     await command.execute(interaction);
   } catch (err) {
@@ -99,10 +127,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Crash visibility
 process.on('unhandledRejection', (r) => console.error('[unhandledRejection]', r));
 process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
 
-// Login to keep the bot online
 client.login(token);
-

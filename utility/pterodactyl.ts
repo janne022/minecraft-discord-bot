@@ -1,4 +1,5 @@
 import axios, { type AxiosInstance } from "axios";
+import { whitelistDb } from "./database";
 
 interface PterodactylConfig {
   apiUrl: string;
@@ -6,12 +7,12 @@ interface PterodactylConfig {
   serverId: string;
 }
 
-interface WhitelistEntry {
+interface WhitelistPlayer {
   uuid: string;
   name: string;
 }
 
-class PterodactylClient {
+export class PterodactylClient {
   private client: AxiosInstance;
   private serverId: string;
 
@@ -22,15 +23,30 @@ class PterodactylClient {
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
-        Accept: "Application/vnd.pterodactyl.v1+json",
+        Accept: "application/json",
       },
     });
   }
 
   /**
-   * Read the whitelist.json file from the server
+   * Send a command to the Minecraft server
    */
-  async getWhitelist(): Promise<WhitelistEntry[]> {
+  async sendCommand(command: string): Promise<void> {
+    try {
+      await this.client.post(
+        `/api/client/servers/${this.serverId}/command`,
+        { command }
+      );
+    } catch (error) {
+      console.error("Error sending command:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Read the current whitelist.json file from the server
+   */
+  async getWhitelistFile(): Promise<WhitelistPlayer[]> {
     try {
       const response = await this.client.get(
         `/api/client/servers/${this.serverId}/files/contents`,
@@ -40,112 +56,101 @@ class PterodactylClient {
           },
         }
       );
-
-      // Handle empty or whitespace-only files
-      const content =
-        typeof response.data === "string"
-          ? response.data.trim()
-          : JSON.stringify(response.data);
-
-      if (!content || content === "") {
-        return [];
-      }
-
-      return JSON.parse(content);
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(
-          `Failed to read whitelist: ${error.response.status} - ${error.response.statusText}. Check API key and server ID.`
-        );
-      }
-      // Handle JSON parse errors
-      if (error instanceof SyntaxError) {
-        console.warn("Invalid whitelist.json, returning empty array");
-        return [];
-      }
-      throw new Error(`Failed to read whitelist: ${error.message}`);
+      return JSON.parse(response.data);
+    } catch (error) {
+      console.error("Error reading whitelist file:", error);
+      return [];
     }
   }
 
   /**
    * Write the whitelist.json file to the server
    */
-  async updateWhitelist(whitelist: WhitelistEntry[]): Promise<void> {
+  async writeWhitelistFile(players: WhitelistPlayer[]): Promise<void> {
     try {
       await this.client.post(
         `/api/client/servers/${this.serverId}/files/write`,
-        JSON.stringify(whitelist, null, 2),
+        JSON.stringify(players, null, 2),
         {
           params: {
             file: "/whitelist.json",
           },
+          headers: {
+            "Content-Type": "text/plain",
+          },
         }
       );
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(
-          `Failed to update whitelist: ${error.response.status} - ${error.response.statusText}`
-        );
-      }
-      throw new Error(`Failed to update whitelist: ${error.message}`);
+    } catch (error) {
+      console.error("Error writing whitelist file:", error);
+      throw error;
     }
   }
 
   /**
-   * Add a player to the whitelist
+   * Sync the whitelist file from the database
+   * This is the source of truth - database overwrites server file
    */
-  async addToWhitelist(player: WhitelistEntry): Promise<void> {
-    const whitelist = await this.getWhitelist();
-    // Check if player already exists
-    if (whitelist.some((p) => p.uuid === player.uuid)) {
-      throw new Error(`Player ${player.name} is already whitelisted`);
-    }
-
-    whitelist.push(player);
-    await this.updateWhitelist(whitelist);
-  }
-
-  /**
-   * Check if a player is whitelisted
-   */
-  async isWhitelisted(playerName: string): Promise<boolean> {
-    const whitelist = await this.getWhitelist();
-    return whitelist.some((p) => p.name === playerName);
-  }
-
-  /**
-   * Send a command to the server (restricted to safe commands)
-   */
-  async sendCommand(command: string): Promise<void> {
-    // Whitelist of allowed commands
-    const allowedCommands = [
-      "whitelist reload",
-      "whitelist list",
-      "save-all",
-    ];
-
-    const isAllowed = allowedCommands.some((allowed) =>
-      command.toLowerCase().startsWith(allowed.toLowerCase())
-    );
-
-    if (!isAllowed) {
-      throw new Error(`Command "${command}" is not allowed`);
-    }
-
+  async syncWhitelistFromDatabase(): Promise<void> {
     try {
-      await this.client.post(`/api/client/servers/${this.serverId}/command`, {
-        command: command,
-      });
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(
-          `Failed to send command: ${error.response.status} - ${error.response.statusText}`
-        );
+      // Get all entries from database
+      const dbEntries = whitelistDb.getAllEntries();
+
+      // Convert to Minecraft whitelist format
+      const whitelistPlayers: WhitelistPlayer[] = dbEntries.map((entry) => ({
+        uuid: entry.minecraftUuid,
+        name: entry.minecraftName,
+      }));
+
+      // Write to server
+      await this.writeWhitelistFile(whitelistPlayers);
+
+      console.log(`Synced ${whitelistPlayers.length} players to whitelist.json`);
+    } catch (error) {
+      console.error("Error syncing whitelist from database:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a single player to whitelist (legacy method - prefer syncWhitelistFromDatabase)
+   * @deprecated Use syncWhitelistFromDatabase instead
+   */
+  async addToWhitelist(player: WhitelistPlayer): Promise<void> {
+    try {
+      const currentWhitelist = await this.getWhitelistFile();
+
+      // Check if player already exists
+      const existingIndex = currentWhitelist.findIndex(
+        (p) => p.uuid === player.uuid
+      );
+
+      if (existingIndex !== -1) {
+        // Update existing entry
+        currentWhitelist[existingIndex] = player;
+      } else {
+        // Add new entry
+        currentWhitelist.push(player);
       }
-      throw new Error(`Failed to send command: ${error.message}`);
+
+      await this.writeWhitelistFile(currentWhitelist);
+    } catch (error) {
+      console.error("Error adding to whitelist:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove a player from the whitelist by UUID
+   */
+  async removeFromWhitelist(uuid: string): Promise<void> {
+    try {
+      const currentWhitelist = await this.getWhitelistFile();
+      const filteredWhitelist = currentWhitelist.filter((p) => p.uuid !== uuid);
+
+      await this.writeWhitelistFile(filteredWhitelist);
+    } catch (error) {
+      console.error("Error removing from whitelist:", error);
+      throw error;
     }
   }
 }
-
-export { PterodactylClient };
-export type { PterodactylConfig, WhitelistEntry };
