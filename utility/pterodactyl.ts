@@ -128,9 +128,24 @@ class PterodactylClient {
   }
 
   /**
-   * Send a command to the server
+   * Send a command to the server (restricted to safe commands)
    */
   async sendCommand(command: string): Promise<void> {
+    // Whitelist of allowed commands
+    const allowedCommands = [
+      "whitelist reload",
+      "whitelist list",
+      "save-all",
+    ];
+
+    const isAllowed = allowedCommands.some((allowed) =>
+      command.toLowerCase().startsWith(allowed.toLowerCase())
+    );
+
+    if (!isAllowed) {
+      throw new Error(`Command "${command}" is not allowed`);
+    }
+
     try {
       await this.client.post(`/api/client/servers/${this.serverId}/command`, {
         command: command,
