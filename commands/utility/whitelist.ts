@@ -18,7 +18,7 @@ export const data = new SlashCommandBuilder()
 export async function execute(interaction: ChatInputCommandInteraction) {
   // Check if user already has a whitelist entry
   const existingEntry = whitelistDb.getEntryByDiscordId(interaction.user.id);
-  
+
   const modal = new ModalBuilder()
     .setCustomId("whitelistModal")
     .setTitle("Whitelist Request");
@@ -37,12 +37,18 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   const labelBuilder = new LabelBuilder()
-    .setLabel(existingEntry ? "Update your Minecraft username:" : "Enter your Minecraft username:")
+    .setLabel(
+      existingEntry
+        ? "Update your Minecraft username:"
+        : "Enter your Minecraft username:"
+    )
     .setTextInputComponent(minecraftNameInput);
 
+  // Show modal
   modal.addLabelComponents(labelBuilder);
   await interaction.showModal(modal);
 
+  // Wait for modal submission, times out after 5 min
   let submittedData;
   try {
     submittedData = await interaction.awaitModalSubmit({
@@ -56,9 +62,11 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   // Sanitize and validate input
-  const rawMinecraftName = submittedData.fields.getTextInputValue("minecraftName").trim();
-  
-  // Strict validation to prevent any injection attacks
+  const rawMinecraftName = submittedData.fields
+    .getTextInputValue("minecraftName")
+    .trim();
+
+  // Validate Minecraft username format
   const minecraftUsernameRegex = /^[a-zA-Z0-9_]{3,16}$/;
   if (!minecraftUsernameRegex.test(rawMinecraftName)) {
     await submittedData.reply({
@@ -69,8 +77,12 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   }
 
   // Check if another Discord user already has this Minecraft name
-  const existingMinecraftEntry = whitelistDb.getEntryByMinecraftName(rawMinecraftName);
-  if (existingMinecraftEntry && existingMinecraftEntry.discordId !== interaction.user.id) {
+  const existingMinecraftEntry =
+    whitelistDb.getEntryByMinecraftName(rawMinecraftName);
+  if (
+    existingMinecraftEntry &&
+    existingMinecraftEntry.discordId !== interaction.user.id
+  ) {
     await submittedData.reply({
       content: `This Minecraft username is already registered to another Discord user.`,
       flags: MessageFlags.Ephemeral,
@@ -81,7 +93,9 @@ export async function execute(interaction: ChatInputCommandInteraction) {
   // Check if minecraftName is a valid Minecraft username via Mojang API
   try {
     const mojangResponse = await axios.get(
-      `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(rawMinecraftName)}`
+      `https://api.mojang.com/users/profiles/minecraft/${encodeURIComponent(
+        rawMinecraftName
+      )}`
     );
 
     if (!mojangResponse.data || !mojangResponse.data.id) {
@@ -98,10 +112,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       12
     )}-${uuid.slice(12, 16)}-${uuid.slice(16, 20)}-${uuid.slice(20)}`;
 
-    // Use the exact name returned by Mojang (correct capitalization)
+    // Update minecraftName to use mojang's response
     const minecraftName = mojangResponse.data.name;
 
-    // Save to database FIRST - only proceed if successful
+    // Save to database
     const isUpdate = !!existingEntry;
     const dbEntry = whitelistDb.upsertWhitelistEntry(
       interaction.user.id,
@@ -117,7 +131,7 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    // Only send to Pterodactyl after successful database save
+    // If database entry saved successfully, sync with Pterodactyl
     try {
       const pterodactyl = new PterodactylClient({
         apiUrl: process.env.PTERODACTYL_URL || "",
@@ -141,10 +155,10 @@ export async function execute(interaction: ChatInputCommandInteraction) {
       });
     } catch (pterodactylError: any) {
       console.error("Pterodactyl sync error:", pterodactylError);
-      
+
       // Database entry was saved, but Pterodactyl sync failed
       await submittedData.reply({
-        content: `Your entry was saved, but there was an error syncing with the server. An admin has been notified.`,
+        content: `Your entry was saved, but there was an error syncing with the server.`,
         flags: MessageFlags.Ephemeral,
       });
     }

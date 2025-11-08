@@ -110,47 +110,4 @@ export class PterodactylClient {
       throw error;
     }
   }
-
-  /**
-   * Add a single player to whitelist (legacy method - prefer syncWhitelistFromDatabase)
-   * @deprecated Use syncWhitelistFromDatabase instead
-   */
-  async addToWhitelist(player: WhitelistPlayer): Promise<void> {
-    try {
-      const currentWhitelist = await this.getWhitelistFile();
-
-      // Check if player already exists
-      const existingIndex = currentWhitelist.findIndex(
-        (p) => p.uuid === player.uuid
-      );
-
-      if (existingIndex !== -1) {
-        // Update existing entry
-        currentWhitelist[existingIndex] = player;
-      } else {
-        // Add new entry
-        currentWhitelist.push(player);
-      }
-
-      await this.writeWhitelistFile(currentWhitelist);
-    } catch (error) {
-      console.error("Error adding to whitelist:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Remove a player from the whitelist by UUID
-   */
-  async removeFromWhitelist(uuid: string): Promise<void> {
-    try {
-      const currentWhitelist = await this.getWhitelistFile();
-      const filteredWhitelist = currentWhitelist.filter((p) => p.uuid !== uuid);
-
-      await this.writeWhitelistFile(filteredWhitelist);
-    } catch (error) {
-      console.error("Error removing from whitelist:", error);
-      throw error;
-    }
-  }
 }

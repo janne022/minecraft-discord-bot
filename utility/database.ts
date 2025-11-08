@@ -32,7 +32,7 @@ export class WhitelistDatabase {
 
     // Create an index on minecraft_name for faster lookups
     this.db.run(`
-      CREATE INDEX IF NOT EXISTS idx_minecraft_name 
+      CREATE INDEX IF NOT EXISTS idx_minecraft_name
       ON whitelist(minecraft_name)
     `);
   }
@@ -52,7 +52,7 @@ export class WhitelistDatabase {
       // Check if this Minecraft name is already registered to a different Discord user
       const existingEntry = this.getEntryByMinecraftName(minecraftName);
       if (existingEntry && existingEntry.discordId !== discordId) {
-        return null; // Minecraft name already taken by another user
+        return null;
       }
 
       const stmt = this.db.prepare(`
@@ -64,6 +64,7 @@ export class WhitelistDatabase {
           updated_at = excluded.updated_at
       `);
 
+      // Execute the upsert with bound parameters
       stmt.run(discordId, minecraftName, minecraftUuid, now, now);
 
       return this.getEntryByDiscordId(discordId);
@@ -81,7 +82,7 @@ export class WhitelistDatabase {
       SELECT discord_id as discordId, minecraft_name as minecraftName, 
              minecraft_uuid as minecraftUuid, created_at as createdAt, 
              updated_at as updatedAt
-      FROM whitelist 
+      FROM whitelist
       WHERE discord_id = ?
     `);
 
@@ -96,7 +97,7 @@ export class WhitelistDatabase {
       SELECT discord_id as discordId, minecraft_name as minecraftName, 
              minecraft_uuid as minecraftUuid, created_at as createdAt, 
              updated_at as updatedAt
-      FROM whitelist 
+      FROM whitelist
       WHERE LOWER(minecraft_name) = LOWER(?)
     `);
 
@@ -116,15 +117,6 @@ export class WhitelistDatabase {
     `);
 
     return stmt.all() as WhitelistEntry[];
-  }
-
-  /**
-   * Remove a whitelist entry by Discord ID
-   */
-  removeEntry(discordId: string): boolean {
-    const stmt = this.db.prepare("DELETE FROM whitelist WHERE discord_id = ?");
-    const result = stmt.run(discordId);
-    return result.changes > 0;
   }
 
   /**
